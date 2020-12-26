@@ -2,7 +2,7 @@ import time
 
 #import dataset as ds
 
-from data_class import ModelNet40, ShapeNetPart
+from data_class import ModelNet40, ShapeNetPart,Cifar10
 
 import random
 import matplotlib
@@ -38,12 +38,15 @@ def train_process():
     summary_writer = tensorboardX.SummaryWriter(log_dir=config.result_sub_folder, comment=config.comment)
     # prepare data
     if config.dataset=="ModelNet40":
-        print(config.train.root_dir)
         train_set = ModelNet40(partition='train')
         valid_set = ModelNet40(partition='test')
     elif config.dataset=="ShapeNetParts":
         train_set=ShapeNetPart(partition='train')
         valid_set =ShapeNetPart(partition='test')
+    elif config.dataset=="Cifar10":
+        train_set = Cifar10(partition='train')
+        valid_set = Cifar10(partition='test')    
+
     else:
         raise NotImplementedError
     train_loader = DataLoader(train_set, batch_size=config.train.batch_size, shuffle=True,
@@ -303,6 +306,8 @@ def create_model(base_model, ckpt_file=None, from_measurement=None):
     # prepare model
     if base_model == 'modelnet_x3_l4':
         net = PointCNN.modelnet_x3_l4()
+    elif  base_model == 'cifar10_x3_l4':
+        net = PointCNN.cifar10_x3_l4()
     elif base_model == 'shapenet_x8_2048_fps':
         net = PointCNN.shapenet_x8_2048_fps()
     else:
