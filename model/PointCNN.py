@@ -36,7 +36,7 @@ class PointCNN(nn.Module):
         if self.fts_is_None:
             self.xconv_output_dim.append(0)
         else:
-            self.xconv_output_dim.append(self.setting["data_dim"]-3)
+            self.xconv_output_dim.append(self.setting['xconv_params'][0]['C'])
 
         for layer_idx, layer_param in enumerate(self.setting['xconv_params']):
             K = layer_param['K']  # K：在inverse density sampling时，需要根据每个点到与其最近的K个点的平均距离估算该点的概率密度，从而实现inverse denstiy sampling；这个K也是XConv操作里的K
@@ -219,6 +219,37 @@ def modelnet_x3_l4()->PointCNN:
                      (16, 2, 128, 64 * x, []),
                      (16, 3, 128, 128 * x, [])]]
     setting["with_global"] = False
+
+    fc_param_name = ('C', 'dropout_rate')
+    setting["fc_params"] = [dict(zip(fc_param_name, fc_param)) for fc_param in
+                 [(128 * x, 0.0),
+                  (64 * x, 0.8)]]
+
+    setting["sampling"] = 'random'
+    setting["sample_num"]=config.dataset_setting["sample_num"]
+
+    setting["data_dim"] = 6
+    setting["task"]="cls"
+    ###### Do not change this
+    setting['fts_is_None'] = config.dataset_setting["data_dim"]<=3
+    if not setting['fts_is_None']:
+        setting['fts_is_None'] = not config.dataset_setting["use_extra_features"]
+    ###### Do not change this
+    setting["with_X_transformation"] = True
+    return PointCNN(setting)
+
+def cifar10_x3_l4()->PointCNN:
+    setting={}
+    setting["num_classes"] = 10
+    x = 3
+    xconv_param_name = ('K', 'D', 'P', 'C', 'links')
+    setting["xconv_params"] = [dict(zip(xconv_param_name, xconv_param)) for xconv_param in
+                    [(8, 1, -1, 16 * x, []),
+                     (12, 2, 256, 32 * x, []),
+                     (16, 2, 128, 64 * x, []),
+                     (16, 4, 128, 128 * x, [])]]
+    
+    setting["with_global"] = True
 
     fc_param_name = ('C', 'dropout_rate')
     setting["fc_params"] = [dict(zip(fc_param_name, fc_param)) for fc_param in
