@@ -306,6 +306,8 @@ def shapenet_x8_2048_fps()->PointCNN:
     return PointCNN(setting)
 
 
+
+
 def scannet_x8_2048_fps4()->PointCNN:
     setting={}
     setting["num_classes"] = 21
