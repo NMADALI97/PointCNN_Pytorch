@@ -24,6 +24,7 @@ import sys
 from datetime import datetime
 from dataset import pointfly as pf
 
+from sklearn.model_selection import train_test_split
 
 
 
@@ -188,7 +189,35 @@ def cifar10_load_data(partition):
         labels.append(data['label'][...].astype(np.int64))
     return (np.concatenate(points, axis=0),np.concatenate(labels, axis=0))
             
+def s3dis_download():       
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(BASE_DIR, 'data')
+    if not os.path.exists(DATA_DIR):
+        os.mkdir(DATA_DIR)
+    if not os.path.exists(os.path.join(DATA_DIR, 's3dis')):
+        www = 'https://drive.google.com/uc?id=1hpX5D7wnMrYOYs2HPbZwK6Wda1LMPX2Z'
+        zipfile = os.path.basename(www)
+        os.system('gdown  %s; unzip data.zip -d data' % (www))
+        os.system('rm data.zip')
+
+        root="data/s3dis"
+        all_files=[]
+        for area_idx in range(1, 3):
+                folder = os.path.join(root, 'Area_%d' % area_idx)
+                for dataset in os.listdir(folder) :
+                   all_files.append(os.path.join(folder,dataset,"zero_0.h5"))
         
+
+        X_train, X_test = train_test_split(all_files, test_size=0.3) 
+        with open("data/s3dis/train_file.txt", 'w') as filelist:
+            for path in X_train:
+                filelist.write(path+"\n")
+
+
+        with open("data/s3dis/valid_file.txt", 'w') as filelist:
+            for path in X_test:
+                filelist.write(path+"\n")
+                          
 
 def modelnet40_download():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -356,14 +385,61 @@ def load_data_partseg(partition):
             np.concatenate(indices_split_to_full, axis=0) if indices_split_to_full else None)
 
 
-
+def load_data_s3dis(partition):
+    s3dis_download()
+    BASE_DIR = os.path.dirname(os.path.abspath("__file__"))
+    DATA_DIR = os.path.join(BASE_DIR, 'data')
+    points = []
+    labels = []
+    point_nums = []
+    labels_seg = []
+    indices_split_to_full = []
+    if partition == 'train':
+        filelist="data/s3dis/train_file.txt"
+    else:
+        filelist="data/s3dis/valid_file.txt"
+    file=[line.strip() for line in open(filelist)]
+    for h5_name in file:
+        data = h5py.File(h5_name, 'r+')
+        points.append(data['data'][...].astype(np.float32))
+        labels.append(data['label'][...].astype(np.int64))
+        point_nums.append(data['data_num'][...].astype(np.int32))
+        labels_seg.append(data['label_seg'][...].astype(np.int64))
+        if 'indices_split_to_full' in data:
+            indices_split_to_full.append(data['indices_split_to_full'][...].astype(np.int64))
+    
+    return (np.concatenate(points, axis=0),
+            np.concatenate(labels, axis=0),
+            np.concatenate(point_nums, axis=0),
+            np.concatenate(labels_seg, axis=0),
+            np.concatenate(indices_split_to_full, axis=0) if indices_split_to_full else None)
 class ShapeNetPart(Dataset):
-    def __init__(self, partition='train'):
+    def __init__(self, partition='trainval'):
         super().__init__()
         #self.batch_size = batch_size
         #self.shuffle = shuffle
        
         self.points, self.labels, self.point_nums, self.labels_seg, _  = load_data_partseg(partition)
+        self.points=torch.Tensor(pf.global_norm(self.points))
+      
+
+        print(self.points.shape)
+        print(self.labels_seg.shape)
+
+      
+
+    def __getitem__(self, index):
+        return self.points[index], self.labels_seg[index], self.point_nums[index],self.labels[index]
+
+    def __len__(self):
+        return self.points.shape[0]
+class S3DIS(Dataset):
+    def __init__(self, partition='train'):
+        super().__init__()
+        #self.batch_size = batch_size
+        #self.shuffle = shuffle
+       
+        self.points, self.labels, self.point_nums, self.labels_seg, _  = load_data_s3dis(partition)
         self.points=torch.Tensor(pf.global_norm(self.points))
       
 
