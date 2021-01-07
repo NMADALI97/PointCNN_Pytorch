@@ -305,9 +305,41 @@ def shapenet_x8_2048_fps()->PointCNN:
     setting["with_X_transformation"] = True
     return PointCNN(setting)
 
+def s3dis_x8_2048_fps()->PointCNN:
+    setting={}
+    setting["num_classes"] = 13
+    x = 8
+    xconv_param_name = ('K', 'D', 'P', 'C', 'links')
+    setting["xconv_params"] = [dict(zip(xconv_param_name, xconv_param)) for xconv_param in
+                               [(8, 1, 2048, 32 * x, []),
+                                (12, 2, 768, 64 * x, []),
+                                (16, 2, 384, 96 * x, []),
+                                (16, 4, 128, 128 * x, [])]]
 
+    xdconv_param_name = ('K', 'D', 'pts_layer_idx', 'qrs_layer_idx')
+    setting["xdconv_params"] = [dict(zip(xdconv_param_name, xdconv_param)) for xdconv_param in
+                     [(16, 4, 3, 3),
+                        (16, 2, 3, 2),
+                        (12, 2, 2, 1),
+                        (8, 2, 1, 0)]]
+    setting["with_global"] = True
+    fc_param_name = ('C', 'dropout_rate')
+    setting["fc_params"] = [dict(zip(fc_param_name, fc_param)) for fc_param in
+                            [(32 * x, 0.0),
+                             (32 * x, 0.5)]]
 
+    setting["sampling"] = 'fps'
+    setting["sample_num"] = config.dataset_setting["sample_num"]
 
+    setting["data_dim"] = config.dataset_setting["data_dim"]
+    setting["task"] = "seg"
+    ###### Do not change this
+    setting['fts_is_None'] = config.dataset_setting["data_dim"] <= 3
+    if not setting['fts_is_None']:
+        setting['fts_is_None'] = not config.dataset_setting["use_extra_features"]
+    ###### Do not change this
+    setting["with_X_transformation"] = True
+    return PointCNN(setting)
 def scannet_x8_2048_fps4()->PointCNN:
     setting={}
     setting["num_classes"] = 21
