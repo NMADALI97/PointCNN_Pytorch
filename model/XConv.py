@@ -86,6 +86,11 @@ class XConv(torch.nn.Module):
 
     def forward(self, pts, fts, qrs):
         N = pts.shape[0]  # batch size
+        print("pts",pts.shape)
+        print("fts",fts.shape)
+        print("qrs",qrs.shape)
+        
+        
         point_num=pts.shape[1]
         # xconv operation
         _, indices_dilated = self.knn_indices_general(qrs, pts, True)
@@ -108,7 +113,9 @@ class XConv(torch.nn.Module):
         nn_fts_from_pts = self._modules['BN2'].forward(
             self._modules['dense2'].forward(nn_fts_from_pts_0.view(-1, self.C_pts_fts))).view(N, self.P, self.K,\
             self.C_pts_fts)  # shape: (N,P,K,C_pts_fts)
-
+        print("indices",indices.shape)
+        print("P",self.P)
+        print("K",self.K)
         if fts is None:
             nn_fts_input = nn_fts_from_pts  # no concat!
         else:
