@@ -3,11 +3,11 @@ import time
 import math
 
 
-base_model='cifar10_x3_l4'
+base_model='s3dis_x8_2048_fps'
 
 
 # Note: dataset to use is determined by base_model
-dataset_available = ["ModelNet40","ScanNetSeg","ShapeNetParts","Cifar10"]
+dataset_available = ["ModelNet40","ScanNetSeg","ShapeNetParts","Cifar10","S3DIS"]
 dataset_to_path = {
     "ModelNet40": {
         "train": "/home/jxq/repository/ModelNet40/train_files.txt",
@@ -24,21 +24,27 @@ dataset_to_path = {
     "Cifar10":{
         "train": "/home/jxq/repository/ModelNet40/train_files.txt",
         "test": "/home/jxq/repository/ModelNet40/test_files.txt"
+    },
+    "S3DIS":{
+        "train": "/home/jxq/repository/ModelNet40/train_files.txt",
+        "test": "/home/jxq/repository/ModelNet40/test_files.txt"
     }
 }
 
-base_model_available=['modelnet_x3_l4','scannet_x8_2048_k8_fps','shapenet_x8_2048_fps','cifar10_x3_l4']
+base_model_available=['modelnet_x3_l4','scannet_x8_2048_k8_fps','shapenet_x8_2048_fps','cifar10_x3_l4','s3dis_x8_2048_fps']
 
 base_model_to_dataset={
     "modelnet_x3_l4":"ModelNet40",
     "shapenet_x8_2048_fps":"ShapeNetParts",
-    "cifar10_x3_l4":"Cifar10"
+    "cifar10_x3_l4":"Cifar10",
+    "s3dis_x8_2048_fps":"S3DIS"
 }
 
 base_model_to_task={
     "modelnet_x3_l4": "cls",
     "cifar10_x3_l4": "cls",
-    "shapenet_x8_2048_fps": "seg"
+    "shapenet_x8_2048_fps": "seg",
+    "s3dis_x8_2048_fps": "seg"
 }
 
 dataset=base_model_to_dataset[base_model]
@@ -97,6 +103,21 @@ base_model_to_dataset_setting={
         "rotation_order": 'rxyz',
         "scaling_range": [0.0, 0.0, 0.0, 'g'],
         "jitter": 0.001,
+        "jitter_val": 0.0,
+        "rotation_range_val": [0, 0, 0, 'u'],
+        "scaling_range_val": [0, 0, 0, 'u']
+    },
+     "s3dis_x8_2048_fps":{
+        "sample_num": 2048,
+        "data_dim": 6,
+        "use_extra_features" : True,
+        "with_normal_feature":False,
+        "with_X_transformation": True,
+        "sorting_method": None,
+        "rotation_range": [0, math.pi/32., 0, 'u'],
+        "rotation_order": 'rxyz',
+        "scaling_range":  [0.001, 0.001, 0.001, 'g'],
+        "jitter": 0.0,
         "jitter_val": 0.0,
         "rotation_range_val": [0, 0, 0, 'u'],
         "scaling_range_val": [0, 0, 0, 'u']
@@ -220,6 +241,19 @@ elif base_model=="shapenet_x8_2048_fps":
     train.weight_decay=0.0
     validation.batch_size=16
     validation.step_val=5
+    test.batch_size=16
+elif base_model=="s3dis_x8_2048_fps":
+    train.batch_size=16
+    train.num_epochs=1024
+    train.optimizer="ADAM"
+    train.epsilon=1e-3
+    train.learning_rate_base=0.005
+    train.decay_steps= 5000
+    train.decay_rate= 0.8
+    train.learning_rate_min=1e-6
+    train.weight_decay= 1e-8
+    validation.batch_size=16
+    validation.step_val=500
     test.batch_size=16
 else:
     print("parameter not specified")
