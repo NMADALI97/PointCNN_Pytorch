@@ -2,7 +2,7 @@ import time
 
 #import dataset as ds
 
-from data_class import ModelNet40, ShapeNetPart,Cifar10
+from data_class import ModelNet40, ShapeNetPart,Cifar10,S3DIS
 
 import random
 import matplotlib
@@ -40,8 +40,11 @@ def train_process():
     if config.dataset=="ModelNet40":
         train_set = ModelNet40(partition='train')
         valid_set = ModelNet40(partition='test')
+    elif config.dataset=="S3DIS":
+        train_set = S3DIS(partition='train')
+        valid_set = S3DIS(partition='test')
     elif config.dataset=="ShapeNetParts":
-        train_set=ShapeNetPart(partition='train')
+        train_set=ShapeNetPart(partition='trainval')
         valid_set =ShapeNetPart(partition='test')
     elif config.dataset=="Cifar10":
         train_set = Cifar10(partition='train')
@@ -241,21 +244,23 @@ def visualize(pretrained_model, prep_img, target_class, file_name_to_export="tes
     print('Guided backprop completed')
 
 def calculate_shape_IoU(pred_np, seg_np, label, class_choice):
-    
     shape_ious = []
-    seg_num = [4, 2, 2, 4, 4, 3, 3, 2, 4, 2, 6, 2, 3, 3, 3, 3]
-    index_start = [0, 4, 6, 8, 12, 16, 19, 22, 24, 28, 30, 36, 38, 41, 44, 47]
-    seg_num_all = 50
-    seg_start_index = 0
+    if config.dataset=="ShapeNetParts":
+        
+        seg_num = [4, 2, 2, 4, 4, 3, 3, 2, 4, 2, 6, 2, 3, 3, 3, 3]
+        index_start = [0, 4, 6, 8, 12, 16, 19, 22, 24, 28, 30, 36, 38, 41, 44, 47]
+        seg_num_all = 50
+        seg_start_index = 0
+    
     for shape_idx in range(seg_np.shape[0]):
-        if not class_choice:
+        if config.dataset=="ShapeNetParts":
             # print (label[shape_idx][0])
             idx = label[shape_idx][0]
             start_index = index_start[idx]
             num = seg_num[idx]
             parts = range(start_index, start_index + num)
         else:
-            parts = range(seg_num[label[0]])
+            parts = np.unique(seg_np[shape_idx])
         part_ious = []
         for part in parts:
             I = np.sum(np.logical_and(pred_np[shape_idx] == part, seg_np[shape_idx] == part))
@@ -310,6 +315,8 @@ def create_model(base_model, ckpt_file=None, from_measurement=None):
         net = PointCNN.cifar10_x3_l4()
     elif base_model == 'shapenet_x8_2048_fps':
         net = PointCNN.shapenet_x8_2048_fps()
+    elif base_model == 's3dis_x8_2048_fps':
+        net = PointCNN.s3dis_x8_2048_fps()
     else:
         raise NotImplementedError
     if ckpt_file is not None:
