@@ -2,8 +2,8 @@ import time
 
 #import dataset as ds
 
-from data_class import ModelNet40, ShapeNetPart,Cifar10,S3DIS
-
+from data_class import ModelNet40, ShapeNetPart,Cifar10,S3DIS,ModelNet10,Mnist
+from transforms_3d import *
 import random
 import matplotlib
 import matplotlib.pyplot as plt
@@ -19,6 +19,13 @@ from torch.utils.data.dataloader import DataLoader
 import dataset.pointfly as pf
 import sklearn.metrics as metrics
 
+import plotly.graph_objects as go
+import plotly.express as px
+
+import os
+import plotly.graph_objects as go
+import plotly.express as px
+
 import config
 import math
 import util.meter as meter
@@ -31,16 +38,39 @@ from util.vis.misc_functions import (convert_to_grayscale,
                                      get_positive_negative_saliency, preprocess_image)
 
 
+
+
 global_step=0
 
 def train_process():
     global global_step
+    
     summary_writer = tensorboardX.SummaryWriter(log_dir=config.result_sub_folder, comment=config.comment)
+    """
+    train_tfs = compose([rotate_y(), 
+                             rand_scale(), 
+                             rand_translate(), 
+                             jitter(), 
+                             normalize()
+                            ])
+
+    
+    test_tfs = normalize()
+    """
     # prepare data
+    print("config.dataset")
     if config.dataset=="ModelNet40":
         train_set = ModelNet40(partition='train')
         valid_set = ModelNet40(partition='test')
+    if config.dataset=="Mnist":
+        train_set = Mnist(partition='train')
+        valid_set = Mnist(partition='test')
+    elif config.dataset=="ModelNet10":
+        train_set = ModelNet10(partition='train')
+        valid_set = ModelNet10(partition='test')
     elif config.dataset=="S3DIS":
+
+       
         train_set = S3DIS(partition='train')
         valid_set = S3DIS(partition='test')
     elif config.dataset=="ShapeNetParts":
@@ -63,7 +93,7 @@ def train_process():
 
     # prepare model
     net = create_model(config.base_model).to(config.device)
-
+    
     # prepare optimizer
     if config.train.optimizer == 'SGD':
         optimizer = optim.SGD(net.parameters(), config.train.learning_rate_base, momentum=config.train.momentum)
@@ -74,8 +104,10 @@ def train_process():
 
 
     net = DataParallel(net)
-
-    model_recorder = ModelRecorder(config.ckpt_file, optimizer, summary_writer=summary_writer)
+    if config.train.resume:
+        model_recorder = ModelRecorder(config.resume_ckpt_file, optimizer, summary_writer=summary_writer)
+    else:
+        model_recorder = ModelRecorder(config.ckpt_file, optimizer, summary_writer=summary_writer)
     start_epoch = 0
     if config.train.resume:
         start_epoch = model_recorder.resume(net.module, optimizer, from_measurement='acc')
@@ -85,6 +117,8 @@ def train_process():
         else:
             print("Resume at {}".format(start_epoch))
 
+
+ 
     # prepare the criterion
     criterion = nn.CrossEntropyLoss()
 
@@ -104,7 +138,7 @@ def train_process():
         if (epoch%config.validation.step_val == 0) or (epoch==config.train.num_epochs-1):
             with torch.no_grad():
                 if config.task == "seg":
-                  validation_loss,validation_acc,avg_per_class_acc, val_ious = evaluate(valid_loader, net)
+                  validation_loss,validation_acc,avg_per_class_acc, val_ious = evaluate(valid_loader, net,html_path="training_output")
                   summary_writer.add_scalar('Validation Loss', validation_loss, global_step=epoch)
                   summary_writer.add_scalar('Validation Accuracy', validation_acc, global_step=epoch)
                   summary_writer.add_scalar('Validation Average Precision ', avg_per_class_acc, global_step=epoch)
@@ -126,6 +160,8 @@ def evaluation_process(detail=False):
 
     if config.dataset=="ModelNet40":
         valid_set = ModelNet40(partition='test')
+    elif config.dataset=="ModelNet10":
+        valid_set = ModelNet10(partition='test')
     elif config.dataset=="ShapeNetParts":
         valid_set =ShapeNetPart(partition='test')
     
@@ -136,7 +172,7 @@ def evaluation_process(detail=False):
 
     # prepare model
     print("evaluation on : {}".format(config.base_model))
-    net = create_model(config.base_model)
+    net = create_model(config.base_model).to(config.device)
     print("load pretained model from {}".format(config.test.pretrained_model))
     ModelRecorder.resume_model(net, config.test.pretrained_model, from_measurement="acc")
 
@@ -144,24 +180,30 @@ def evaluation_process(detail=False):
     if not detail:
         with torch.no_grad():
             if config.task == "seg":
-              validation_loss,validation_acc,avg_per_class_acc, val_ious = evaluate(valid_loader, net)
+              validation_loss,validation_acc,avg_per_class_acc, val_ious = evaluate(valid_loader, net,html_path="validation_output")
             else :   
               validation_loss,acc, conf_matrix = evaluate(valid_loader, net, True)
         if not config.task == "seg":
           plot_conf_matrix(valid_set.get_categories(), conf_matrix,
-                         save_file='{}/{}.pdf'.format(config.result_sub_folder, config.comment))
+                         save_file='{}conf_matrix.pdf'.format(config.result_sub_folder))
     else:
-        with torch.no_grad():
-            acc, conf_matrix, features, labels = evaluate(valid_loader, net, True, True)
-        plot_conf_matrix(valid_set.get_categories(), conf_matrix,
-                         save_file='{}/{}.pdf'.format(config.result_sub_folder, config.comment))
-        array2tsv(features, '{}/{}.tsv'.format(config.result_sub_folder, config.comment))
-        labels_file = open('{}/{}_label.tsv'.format(config.result_sub_folder, config.comment), 'w')
-        labels_txt = ""
-        for label in labels:
-            labels_txt += '{}\n'.format(int(label))
-        labels_file.write(labels_txt[:-1])
-        labels_file.close()
+        if not config.task == "seg":
+            with torch.no_grad():
+                validation_loss,acc, conf_matrix, features, labels = evaluate(valid_loader, net, True, True)
+            plot_conf_matrix(valid_set.get_categories(), conf_matrix,
+                            save_file='{}conf_matrix.pdf'.format(config.result_sub_folder))
+            array2tsv(features, '{}features.tsv'.format(config.result_sub_folder))
+            
+            np.save('{}features.npy'.format(config.result_sub_folder),features)
+            np.save('{}labels.npy'.format(config.result_sub_folder),labels)
+            labels_file = open('{}labels.tsv'.format(config.result_sub_folder), 'w')
+            labels_txt = ""
+            for label in labels:
+                labels_txt += '{}\n'.format(int(label))
+            labels_file.write(labels_txt[:-1])
+            labels_file.close()
+        else :
+            raise NotImplementedError
     print("Finished!")
 
 
@@ -243,24 +285,13 @@ def visualize(pretrained_model, prep_img, target_class, file_name_to_export="tes
     save_gradient_images(neg_sal, file_name_to_export + '_neg_sal')
     print('Guided backprop completed')
 
-def calculate_shape_IoU(pred_np, seg_np, label, class_choice):
+def calculate_shape_IoU(pred_np, seg_np, class_choice):
     shape_ious = []
-    if config.dataset=="ShapeNetParts":
-        
-        seg_num = [4, 2, 2, 4, 4, 3, 3, 2, 4, 2, 6, 2, 3, 3, 3, 3]
-        index_start = [0, 4, 6, 8, 12, 16, 19, 22, 24, 28, 30, 36, 38, 41, 44, 47]
-        seg_num_all = 50
-        seg_start_index = 0
+    
     
     for shape_idx in range(seg_np.shape[0]):
-        if config.dataset=="ShapeNetParts":
-            # print (label[shape_idx][0])
-            idx = label[shape_idx][0]
-            start_index = index_start[idx]
-            num = seg_num[idx]
-            parts = range(start_index, start_index + num)
-        else:
-            parts = np.unique(seg_np[shape_idx])
+        
+        parts = np.unique(seg_np[shape_idx])
         part_ious = []
         for part in parts:
             I = np.sum(np.logical_and(pred_np[shape_idx] == part, seg_np[shape_idx] == part))
@@ -311,6 +342,10 @@ def create_model(base_model, ckpt_file=None, from_measurement=None):
     # prepare model
     if base_model == 'modelnet_x3_l4':
         net = PointCNN.modelnet_x3_l4()
+    if base_model == 'mnist_x3_l4':
+        net = PointCNN.mnist_x3_l4()
+    elif base_model == 'modelnet_10_x3_l4':
+        net = PointCNN.modelnet_10_x3_l4()
     elif  base_model == 'cifar10_x3_l4':
         net = PointCNN.cifar10_x3_l4()
     elif base_model == 'shapenet_x8_2048_fps':
@@ -327,11 +362,13 @@ def create_model(base_model, ckpt_file=None, from_measurement=None):
 def train_epoch(data_loader, net: nn.Module, criterion, optimizer, epoch):
     global global_step
     if config.task == "seg":
-        train_true_cls = []
-        train_pred_cls = []
-        train_true_seg = []
-        train_pred_seg = []
-        train_label_seg = []
+        #train_true_cls = []
+        #train_pred_cls = []
+        #train_true_seg = []
+        #train_pred_seg = []
+        #train_label_seg = []
+        Iou_meter = meter.AverageValueMeter()
+        avg_acc_meter = meter.AverageValueMeter()
     batch_time = meter.TimeMeter(True)
     epoch_time = meter.TimeMeter(True)
     loss_meter = meter.AverageValueMeter()
@@ -351,13 +388,16 @@ def train_epoch(data_loader, net: nn.Module, criterion, optimizer, epoch):
 
 
         batch_time.reset()
-        #loss_meter.reset()
-
+        
         batch_data = sample[0]
         batch_labels = sample[1]
         if config.task == "seg":
             data_num = sample[2]
-            data_labels= sample[3]
+            #data_labels= sample[3]
+        
+            
+        #print("xyz max:",sample[0].numpy().max(),"  xyz min:  ",sample[0].numpy().min(),"  Nan Value ",np.isnan(sample[0].numpy()).any())
+        #print("label max:",sample[1].numpy().max(),"  label min:  ",sample[1].numpy().min(),"  Nan Value ",np.isnan(sample[0].numpy()).any())
         batch_time.reset()
         if config.task == "cls":
             shape = batch_data.shape
@@ -377,7 +417,7 @@ def train_epoch(data_loader, net: nn.Module, criterion, optimizer, epoch):
                 "sample_num"], -1)
             batch_labels = batch_labels.view(-1, 1)[indices].view(shape[0], config.dataset_setting["sample_num"])
         features_augmented = None
-
+        
         xforms, rotations = pf.get_xforms(config.train.batch_size, config.dataset_setting["rotation_range"], config.dataset_setting["scaling_range"],
                                   config.dataset_setting["rotation_order"])
         if config.dataset_setting["data_dim"] > 3:
@@ -404,6 +444,8 @@ def train_epoch(data_loader, net: nn.Module, criterion, optimizer, epoch):
         jitter_range = config.dataset_setting["jitter"]
         points_augmented = pf.augment(points_sampled, xforms, jitter_range)
 
+        #print("points_augmented max:",torch.max(points_augmented),"  points_augmented min:  ",torch.min(points_augmented))
+
         if (features_augmented is None):
             batch_data = points_augmented
         else:
@@ -413,6 +455,7 @@ def train_epoch(data_loader, net: nn.Module, criterion, optimizer, epoch):
         batch_labels=batch_labels.to(config.device)
 
         raw_out = net.forward(batch_data)
+        
         if config.task=="cls":
             sample_num = raw_out.shape[1]
             raw_out = raw_out.view(-1, raw_out.shape[-1])
@@ -428,21 +471,24 @@ def train_epoch(data_loader, net: nn.Module, criterion, optimizer, epoch):
         acc_meter.add(raw_out.detach(),  batch_labels.view(-1).long().detach())
 
         optimizer.zero_grad()
+        
+        #print("before backward: ",loss.item())
         loss.backward()
+        #print("before backward: ",loss.item())
+
         optimizer.step()
 
         if config.task=="seg":
             seg_np = batch_labels.cpu().numpy()                
             pred_np = pred_choice.detach().cpu().numpy()
-            temp_label = data_labels.numpy().reshape(-1, 1)
 
-            train_true_cls.append(seg_np.reshape(-1))       
-            train_pred_cls.append(pred_np.reshape(-1))      
+            
+            avg_acc_meter.add( metrics.balanced_accuracy_score(seg_np.reshape(-1), pred_np.reshape(-1)))
+            Iou_meter.add(np.mean(calculate_shape_IoU(pred_np, seg_np, None)))
 
-            train_true_seg.append(seg_np)
-            train_pred_seg.append(pred_np)
+            
 
-            train_label_seg.append(temp_label)
+            #train_label_seg.append(temp_label)
 
         if i % config.print_freq == 0:
             print('Epoch: [{}][{}/{}]\t'.format(epoch, i, len(data_loader)) +
@@ -458,31 +504,38 @@ def train_epoch(data_loader, net: nn.Module, criterion, optimizer, epoch):
             'category acc: {}'.format(acc_meter.value(1)))
         return loss_meter.value()[0],acc_meter.value(1)
     else:
-        train_true_cls = np.concatenate(train_true_cls)
-        train_pred_cls = np.concatenate(train_pred_cls)
+        
+        train_acc = acc_meter.value(1)
+        avg_per_class_acc = avg_acc_meter.value()[0]
 
-        train_acc = metrics.accuracy_score(train_true_cls, train_pred_cls)
-        avg_per_class_acc = metrics.balanced_accuracy_score(train_true_cls.data, train_pred_cls.data)
+        
 
-        train_true_seg = np.concatenate(train_true_seg, axis=0)
-        train_pred_seg = np.concatenate(train_pred_seg, axis=0)
-        train_label_seg = np.concatenate(train_label_seg, axis=0)
-
-        train_ious = calculate_shape_IoU(train_pred_seg, train_true_seg, train_label_seg, None)
+        train_ious = Iou_meter.value()[0]
         
         outstr = 'Train %d, loss: %.6f, train acc: %.6f, train avg acc: %.6f, train iou: %.6f' % (epoch,loss_meter.value()[0] , train_acc, avg_per_class_acc, np.mean(train_ious))
         print(outstr)
         return loss_meter.value()[0],train_acc,avg_per_class_acc, np.mean(train_ious)
 
 
-def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_features=False):
+def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_features=False,html_path="training_output"):
 
+
+   
     if config.task == "seg":
-        train_true_cls = []
-        train_pred_cls = []
-        train_true_seg = []
-        train_pred_seg = []
-        train_label_seg = []
+        #train_true_cls = []
+        #train_pred_cls = []
+        #train_true_seg = []
+        #train_pred_seg = []
+        #train_label_seg = []
+        Iou_meter = meter.AverageValueMeter()
+        avg_acc_meter = meter.AverageValueMeter()
+        N=len(data_loader.dataset)
+        n_sample=int(0.05*len(data_loader.dataset))
+        idx_samples=set(np.random.choice(np.arange(N), size=n_sample, replace=False))
+
+  
+        if not os.path.exists(html_path):
+            os.makedirs(html_path)
 
     criterion = nn.CrossEntropyLoss()
     
@@ -492,8 +545,9 @@ def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_featu
     acc_meter = meter.ClassErrorMeter(topk=[1, 5], accuracy=True)
     all_features = []
     all_labels = []
-    num_classes = 40
+    num_classes = 10
     confusion_matrix_meter = None
+    print("calc_confusion_matrix",calc_confusion_matrix)
     if calc_confusion_matrix:
         confusion_matrix_meter = meter.ConfusionMeter(num_classes, normalized=True)
 
@@ -503,7 +557,9 @@ def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_featu
         batch_labels=sample[1]
         if config.task=="seg":
             data_num=sample[2]
-            data_labels= sample[3]
+            #data_labels= sample[3]
+            tmp_set=set(np.arange(config.validation.batch_size*i,(config.validation.batch_size*i)+batch_data.size(0)))
+            tmp_set=list(idx_samples.intersection(tmp_set))
         batch_time.reset()
         if config.task=="cls":
             shape=batch_data.shape
@@ -520,6 +576,7 @@ def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_featu
             indices = indices.astype(int)
             pts_fts_sampled = batch_data.view(-1, batch_data.shape[-1])[indices].view(shape[0], config.dataset_setting["sample_num"], -1)
             batch_labels=batch_labels.view(-1,1)[indices].view(shape[0],config.dataset_setting["sample_num"])
+        
         features_augmented = None
         xforms, rotations = pf.get_xforms(shape[0], config.dataset_setting["rotation_range_val"], config.dataset_setting["scaling_range_val"],
                                   config.dataset_setting["rotation_order"])
@@ -554,7 +611,15 @@ def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_featu
         batch_data = batch_data.to(config.device)
         batch_labels=batch_labels.to(config.device)
 
-        raw_out = net.forward(batch_data)
+        
+        if rtn_features:
+             raw_out,return_intermediate = net.forward(batch_data,True)
+             all_features.append(return_intermediate.view(-1,192).detach().cpu().numpy())
+             for u in list(batch_labels.cpu().numpy().reshape(-1)):
+               all_labels.append(u)
+        else:
+            raw_out = net.forward(batch_data)
+       
         if config.task=="cls":
                     sample_num = raw_out.shape[1]
                     raw_out = raw_out.view(-1, raw_out.shape[-1])
@@ -564,6 +629,29 @@ def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_featu
                          confusion_matrix_meter.add(raw_out.cpu(), target=batch_labels)
         elif config.task=="seg":
                     pred_choice = raw_out.data.max(2)[1]
+                    xyz_points=batch_data.cpu().numpy()  
+                    if xyz_points.shape[-1] > 3:
+                        xyz_points=xyz_points[:,:,:3]
+                    seg_label_pred=pred_choice.cpu().numpy()  
+                    seg_label_gt=batch_labels.cpu().numpy()  
+                    if len(tmp_set) >0 :
+                        all_idx=[u- config.validation.batch_size*(u//config.validation.batch_size) for u in  tmp_set]
+                        for kk,idx in enumerate(all_idx):
+
+                            x,y,z=xyz_points[idx].T
+                            rgb=seg_label_gt[idx]
+                            fig = go.Figure(data=[go.Scatter3d( x=x, y=y, z=z, mode='markers', marker=dict( size=2, color=rgb, colorscale='Viridis', opacity=0.8 ) )])
+                            fig.write_html(os.path.join(html_path,"file"+str(tmp_set[kk])+"_gt.html"))
+                            
+
+                          
+
+                            x,y,z=xyz_points[idx].T
+                            rgb=seg_label_pred[idx]
+
+                            fig = go.Figure(data=[go.Scatter3d( x=x, y=y, z=z, mode='markers', marker=dict( size=2, color=rgb, colorscale='Viridis', opacity=0.8 ) )])
+                            fig.write_html(os.path.join(html_path,"file"+str(tmp_set[kk])+"_pred.html"))
+                            
 
                     raw_out = raw_out.view(-1, raw_out.shape[-1])
                     loss=criterion(raw_out, batch_labels.view(-1).long())
@@ -574,15 +662,10 @@ def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_featu
         if config.task=="seg":
             seg_np = batch_labels.cpu().numpy()                
             pred_np = pred_choice.detach().cpu().numpy()
-            temp_label = data_labels.numpy().reshape(-1, 1)
 
-            train_true_cls.append(seg_np.reshape(-1))       
-            train_pred_cls.append(pred_np.reshape(-1))      
-
-            train_true_seg.append(seg_np)
-            train_pred_seg.append(pred_np)
-
-            train_label_seg.append(temp_label)
+            
+            avg_acc_meter.add( metrics.balanced_accuracy_score(seg_np.reshape(-1), pred_np.reshape(-1)))
+            Iou_meter.add(np.mean(calculate_shape_IoU(pred_np, seg_np, None)))
         
 
         if i % config.print_freq == 0:
@@ -597,27 +680,28 @@ def evaluate(data_loader, net: nn.Module, calc_confusion_matrix=False, rtn_featu
     #rst = acc_meter.value(1)
     if config.task=="cls":
         print('[ Validation summary ] category acc: {}'.format(acc_meter.value(1)))
-        rst = loss_meter.value()[0],acc_meter.value(1)
+
+        if calc_confusion_matrix:
+            rst = loss_meter.value()[0],acc_meter.value(1), confusion_matrix_meter.value()
+        
+        if rtn_features:
+            if calc_confusion_matrix: 
+             rst = loss_meter.value()[0],acc_meter.value(1), confusion_matrix_meter.value(), np.concatenate(all_features, axis=0), np.array(all_labels).reshape(-1)
+            else:
+              rst = loss_meter.value()[0],acc_meter.value(1), np.concatenate(all_features, axis=0), np.array(all_labels).reshape(-1)
+      
     else:
-        train_true_cls = np.concatenate(train_true_cls)
-        train_pred_cls = np.concatenate(train_pred_cls)
+        train_acc = acc_meter.value(1)
+        avg_per_class_acc = avg_acc_meter.value()[0]
 
-        train_acc = metrics.accuracy_score(train_true_cls, train_pred_cls)
-        avg_per_class_acc = metrics.balanced_accuracy_score(train_true_cls.data, train_pred_cls.data)
+        
 
-        train_true_seg = np.concatenate(train_true_seg, axis=0)
-        train_pred_seg = np.concatenate(train_pred_seg, axis=0)
-        train_label_seg = np.concatenate(train_label_seg, axis=0)
-
-        train_ious = calculate_shape_IoU(train_pred_seg, train_true_seg, train_label_seg, None)
+        train_ious = Iou_meter.value()[0]
         
         outstr = '[ Validation summary ] loss: %.6f, train acc: %.6f, train avg acc: %.6f, train iou: %.6f' % (loss_meter.value()[0] , train_acc, avg_per_class_acc, np.mean(train_ious))
         print(outstr)
         rst = loss_meter.value()[0],train_acc,avg_per_class_acc, np.mean(train_ious)
-    if calc_confusion_matrix:
-        rst = rst, confusion_matrix_meter.value()
-    if rtn_features:
-        rst = rst, np.concatenate(all_features, axis=0), all_labels
+
     return rst
 
 
