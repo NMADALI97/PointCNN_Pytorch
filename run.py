@@ -46,17 +46,8 @@ def train_process():
     global global_step
     
     summary_writer = tensorboardX.SummaryWriter(log_dir=config.result_sub_folder, comment=config.comment)
-    """
-    train_tfs = compose([rotate_y(), 
-                             rand_scale(), 
-                             rand_translate(), 
-                             jitter(), 
-                             normalize()
-                            ])
-
+   
     
-    test_tfs = normalize()
-    """
     # prepare data
     print("config.dataset")
     if config.dataset=="ModelNet40":
@@ -342,7 +333,7 @@ def create_model(base_model, ckpt_file=None, from_measurement=None):
     # prepare model
     if base_model == 'modelnet_x3_l4':
         net = PointCNN.modelnet_x3_l4()
-    if base_model == 'mnist_x3_l4':
+    elif base_model == 'mnist_x3_l4':
         net = PointCNN.mnist_x3_l4()
     elif base_model == 'modelnet_10_x3_l4':
         net = PointCNN.modelnet_10_x3_l4()
