@@ -636,8 +636,7 @@ class ShapeNetPart(Dataset):
        
         self.points, self.labels, self.point_nums, self.labels_seg, _  = load_data_partseg(partition)
         
-        self.transforms=transforms
-        #self.points=pf.global_norm(self.points)
+        self.points=pf.global_norm(self.points)
         
 
         print(self.points.shape)
@@ -647,7 +646,7 @@ class ShapeNetPart(Dataset):
 
     def __getitem__(self, index):
         
-        return self.transforms(self.points[index]), self.labels_seg[index], self.point_nums[index],self.labels[index]
+        return self.points[index], self.labels_seg[index], self.point_nums[index],self.labels[index]
 
     def __len__(self):
         return self.points.shape[0]
@@ -660,8 +659,8 @@ class S3DIS(Dataset):
         #self.shuffle = shuffle
        
         self.points, _, self.point_nums, self.labels_seg, _  = load_data_s3dis(partition)
-        self.transforms=transforms
-        #self.points=pf.global_norm(self.points)
+      
+        self.points=pf.global_norm(self.points)
         
 
         print(self.points.shape)
@@ -671,7 +670,7 @@ class S3DIS(Dataset):
 
     def __getitem__(self, index):
         
-        return self.transforms(self.points[index]), self.labels_seg[index], self.point_nums[index],-1
+        return self.points[index], self.labels_seg[index], self.point_nums[index],-1
 
         
 
