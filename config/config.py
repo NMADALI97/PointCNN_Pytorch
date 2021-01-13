@@ -64,8 +64,8 @@ task=base_model_to_task[base_model]
 
 base_model_to_dataset_setting={
     "modelnet_x3_l4":{
-        "sample_num":1024,
-        "data_dim":6,
+        "sample_num":2048,
+        "data_dim":3,
         "use_extra_features" : False,
         "with_X_transformation" : True,
         "with_normal_feature":True,
