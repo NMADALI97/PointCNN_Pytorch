@@ -115,7 +115,7 @@ class PointCNN(nn.Module):
         self.net.add_module(name="logits",module=nn.Linear(self.fc_params[-1]["C"], self.setting["num_classes"], bias=True).to(config.device))
 
 
-    def forward(self, input):
+    def forward(self, input,return_intermediate=False):
         pts=input[:,:,:3]
         if input.shape[-1]>3:
             fts=input[:,:,3:]
@@ -191,8 +191,12 @@ class PointCNN(nn.Module):
                 input_of_logits_layer = fc_layers[-1]
             else:
                 input_of_logits_layer = fc_layers[-1].mean(dim=1, keepdim=True)
+                
             logits=self.net._modules["logits"].forward(input_of_logits_layer)
-            return logits
+            if not return_intermediate:
+                return logits
+            else:
+                return logits,input_of_logits_layer
         elif self.setting['task']=='seg':
             logits = self.net._modules["logits"].forward(fc_layers[-1])
             return logits
@@ -229,6 +233,64 @@ def modelnet_x3_l4()->PointCNN:
     setting["sample_num"]=config.dataset_setting["sample_num"]
 
     setting["data_dim"] = 6
+    setting["task"]="cls"
+    ###### Do not change this
+    setting['fts_is_None'] = config.dataset_setting["data_dim"]<=3
+    if not setting['fts_is_None']:
+        setting['fts_is_None'] = not config.dataset_setting["use_extra_features"]
+    ###### Do not change this
+    setting["with_X_transformation"] = True
+    return PointCNN(setting)
+def modelnet_10_x3_l4()->PointCNN:
+    setting={}
+    setting["num_classes"] = 10
+    x = 3
+    xconv_param_name = ('K', 'D', 'P', 'C', 'links')
+    setting["xconv_params"] = [dict(zip(xconv_param_name, xconv_param)) for xconv_param in
+                    [(8, 1, -1, 16 * x, []),
+                     (12, 2, 384, 32 * x, []),
+                     (16, 2, 128, 64 * x, []),
+                     (16, 3, 128, 128 * x, [])]]
+    setting["with_global"] = False
+
+    fc_param_name = ('C', 'dropout_rate')
+    setting["fc_params"] = [dict(zip(fc_param_name, fc_param)) for fc_param in
+                 [(128 * x, 0.0),
+                  (64 * x, 0.8)]]
+
+    setting["sampling"] = 'random'
+    setting["sample_num"]=config.dataset_setting["sample_num"]
+
+    setting["data_dim"] = config.dataset_setting["data_dim"]
+    setting["task"]="cls"
+    ###### Do not change this
+    setting['fts_is_None'] = config.dataset_setting["data_dim"]<=3
+    if not setting['fts_is_None']:
+        setting['fts_is_None'] = not config.dataset_setting["use_extra_features"]
+    ###### Do not change this
+    setting["with_X_transformation"] = True
+    return PointCNN(setting)
+def mnist_x3_l4()->PointCNN:
+    setting={}
+    setting["num_classes"] = 10
+    x = 3
+    xconv_param_name = ('K', 'D', 'P', 'C', 'links')
+    setting["xconv_params"] = [dict(zip(xconv_param_name, xconv_param)) for xconv_param in
+                    [(8, 1, -1, 16 * x, []),
+                     (12, 2, 384, 32 * x, []),
+                     (16, 2, 128, 64 * x, []),
+                     (16, 3, 128, 128 * x, [])]]
+    setting["with_global"] = False
+
+    fc_param_name = ('C', 'dropout_rate')
+    setting["fc_params"] = [dict(zip(fc_param_name, fc_param)) for fc_param in
+                 [(128 * x, 0.0),
+                  (64 * x, 0.8)]]
+
+    setting["sampling"] = 'random'
+    setting["sample_num"]=config.dataset_setting["sample_num"]
+
+    setting["data_dim"] = config.dataset_setting["data_dim"]
     setting["task"]="cls"
     ###### Do not change this
     setting['fts_is_None'] = config.dataset_setting["data_dim"]<=3
